@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris</title>
+    <style>
+        *{
+            margin: 0;
+            padding: 0;
+        }
+        body{
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100vw;
+            height: 100vh;
+        }
+        h2{
+            padding: 10px;
+        }
+        canvas{
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h2>Tetris</h2>
+</body>
+    <script>
+        const ROWS = 20;
+        const COLS = 18;
+        const SQUARE_SIZE = 20;
+
+        // 深拷贝 矩阵
+        const cloneMatrix = (matrix) => {
+            let arr = [];
+            for (let i of matrix) {
+                if (i instanceof Array) {
+                    arr.push(cloneMatrix(i));
+                } else {
+                    arr.push(i);
+                }
+            }
+            return arr;
+        }
+
+        // 矩阵与方块合并
+        const mergeMatrix = (child, parent, isColOut = false) => {
+            const { row, col, arr } = child;
+            let newParent = cloneMatrix(parent);
+            for (let r = 0; r < arr.length; r++) {
+                if (newParent[row + r] && newParent[row + r] instanceof Array) {
+                    for (let i = 0; i < 4; i++) {
+                        let num = newParent[row + r][col + i];
+                        let newNum = arr[r][i];
+                        if (isColOut || (col + i >= 0 && newNum)) {
+                            newParent[row + r][col + i] = num === 1 ? 1 : newNum;
+                        }
+                    }
+                }
+            }
+            return newParent;
+        }
+        // 生成空矩阵
+        let generatorMatrix = () => {
+            let matrix = [];
+            for (let r = 0; r < ROWS; r++) {
+                let newLine = [];
+                for (let c = 0; c < COLS; c++) {
+                    newLine.push(0);
+                }
+                matrix.push(newLine);
+            }
+            return matrix;
+        }
+        // 方块基类 ---------------------------------
+
+        class Square {
+            constructor(ctx) {
+                this.ctx = ctx;
+                this.x = COLS / 2;
+                this.y = 0;
+                this.roates = [];
+                this.dir = 0;
+                this.data = this.roates[this.dir];
+            }
+            // 旋转
+            rotate(matrix){
+                let tempDir = this.dir;
+                tempDir++;
+                tempDir = tempDir % 4;
+                let child = {
+                    row: this.y,
+                    col: this.x - 2,
+                    arr: this.roates[tempDir],
+                }
+                let newMatrix = mergeMatrix(child, cloneMatrix(matrix), true)
+                // 1. 不能出界
+                for (let row of newMatrix) {
+                    if (row.length > COLS || row[-1] !== undefined) {
+                        return 
+                    }
+                }
+                this.dir++;
+                this.dir = this.dir % 4;
+                this.data = this.roates[this.dir];
+            }
+            // 是否两侧越界
+            isContactBorder(matrix, direction) {
+                for (let row = 0; row < matrix.length; row++) {
+                    if (direction === 'left') {
+                        if (matrix[row][0] === 1) {
+                            console.log('left, true');
+                            return true;
+                        }
+                    } else if (direction === 'right') {
+                        if (matrix[row][COLS - 1] === 1) {
+                            console.log('right, true');
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+            // 方块是否与矩阵重叠
+            checkMatrix(matrix, { x, y }) {
+                return matrix[x][y] === 1;
+            }
+            // 碰撞检查
+            isCollision(matrix, child, direction) {
+                const { row, col, arr } = child;
+                // 左右 | 旋转
+                for (let x = 0; x < arr.length; x++) {
+                    for (let y = 0; y < arr[x].length; y++) {
+                        if (arr[x][y] === 1) {
+                            let pos = {
+                                x: x + row,
+                                y: y + col
+                            }
+                            if (direction === 'right' || direction === 'left') {
+                                pos.y = y + col + (direction === 'right' ? 1 : -1)
+                            }
+                            if (this.checkMatrix(matrix, pos)) {
+                                return true
+                            }
+                        }
+                    }
+                }
+                return false
+            }
+            // 左右移动
+            move(num, matrix) {
+                let child = {
+                    row: this.y,
+                    col: this.x - 2,
+                    arr: this.data,
+                }
+                // 1. 不能出界
+                let newMatrix = mergeMatrix(child, generatorMatrix())
+                if (this.isContactBorder(newMatrix, num > 0 ? 'right' : 'left')) {
+                    return;
+                }
+                // 2. 碰撞检查
+                child.col + num
+                if (this.isCollision(matrix, child, num > 0 ? 'right' : 'left')) {
+                    return;
+                }
+                this.x += num;
+            }
+            down() {
+                this.y++;
+            }
+        }
+
+        // 方块类 ---------------------------------
+
+        class SquareL extends Square{
+            constructor(ctx) {
+                super(ctx)
+                this.roates = [
+                    [
+                        [0, 0, 0, 0, ],
+                        [0, 0, 0, 1, ],
+                        [0, 1, 1, 1, ],
+                    ],
+                    [
+                        [0, 0, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                        [0, 1, 1, 0, ],
+                    ],
+                    [
+                        [0, 1, 1, 0, ],
+                        [0, 0, 1, 0, ],
+                        [0, 0, 1, 0, ],
+                        [0, 0, 0, 0, ],
+                    ],
+                    [
+                        [0, 0, 0, 0, ],
+                        [1, 0, 0, 0, ],
+                        [1, 1, 1, 0, ],
+                    ],
+                ]
+                this.data = this.roates[this.dir]
+            }
+        }
+
+
+        class SquareZ extends Square{
+            constructor(ctx) {
+                super(ctx)
+                this.roates = [
+                    [
+                        [1, 1, 0, 0, ],
+                        [0, 1, 1, 0, ],
+                    ],
+                    [
+                        [0, 1, 0, 0, ],
+                        [1, 1, 0, 0, ],
+                        [1, 0, 0, 0, ],
+                    ],
+                    [
+                        [0, 1, 1, 0, ],
+                        [1, 1, 0, 0, ],
+                    ],
+                    [
+                        [1, 0, 0, 0, ],
+                        [1, 1, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                    ],
+                ]
+                this.data = this.roates[this.dir]
+            }
+        }
+        
+        
+        class SquareX extends Square{
+            constructor(ctx) {
+                super(ctx)
+                this.roates = [
+                    [
+                        [1, 1, 0, 0, ],
+                        [1, 1, 0, 0, ],
+                    ],
+                    [
+                        [1, 1, 0, 0, ],
+                        [1, 1, 0, 0, ],
+                    ],
+                    [
+                        [1, 1, 0, 0, ],
+                        [1, 1, 0, 0, ],
+                    ],
+                    [
+                        [1, 1, 0, 0, ],
+                        [1, 1, 0, 0, ],
+                    ],
+                ]
+                this.data = this.roates[this.dir]
+            }
+        }
+
+        
+        class Square_ extends Square{
+            constructor(ctx) {
+                super(ctx)
+                this.roates = [
+                    [
+                        [1, 1, 1, 1, ],
+                    ],
+                    [
+                        [0, 1, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                    ],
+                    [
+                        [1, 1, 1, 1, ],
+                    ],
+                    [
+                        [0, 1, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                        [0, 1, 0, 0, ],
+                    ],
+                ]
+                this.data = this.roates[this.dir]
+            }
+        }
+        
+        // 方块工厂 创建四种块(L,z,田,一), 四种块的四个旋转方向
+        class SquareFactory {
+            constructor(ctx) {
+                this.ctx = ctx
+            }
+            make(v) {
+                switch (v) {
+                    case 'L':
+                        return new SquareL(this.ctx)
+                    case 'Z':
+                        return new SquareZ(this.ctx)
+                    case 'X':
+                        return new SquareX(this.ctx)
+                    case '_':
+                        return new Square_(this.ctx)
+                    default:
+                        return new SquareL(this.ctx)
+                }
+            }
+            rund() {
+                let squareTypes = ['L', 'Z', 'X', '_']
+                return this.make(
+                    squareTypes[~~(Math.random() * squareTypes.length)]
+                )
+            }
+        }
+
+        class Tetris {
+            constructor(rows, cols) {
+                this.canvas = document.createElement('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                document.body.appendChild(this.canvas)
+                
+                this.rows = rows;
+                this.cols = cols;
+                this.latticeSize = SQUARE_SIZE;
+                this.canvas.width = this.latticeSize * cols;
+                this.canvas.height = this.latticeSize * rows;
+
+                // 所有的块
+                this.matrix = generatorMatrix();
+                this.timer = null;
+                this.currentSquare = null;
+                this.timer = null;
+                this.squareFactory = new SquareFactory(this.ctx);
+            }
+            // 重绘所有的已经确定的方块
+            draw() {
+                const { matrix, ctx, canvas, latticeSize, cols, rows } = this;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                let tempMatrix = cloneMatrix(matrix)
+
+                // 合并到 matrix
+                if (this.currentSquare) {
+                    const { x, y, data } = this.currentSquare
+                    let child = {
+                        row: y,
+                        col: x - 2,
+                        arr: data
+                    }
+                    tempMatrix = mergeMatrix(child, tempMatrix)
+                }
+
+                // 绘制已经确定的格子
+                for (let y = 0; y < tempMatrix.length; y++) {
+                    let row = tempMatrix[y];
+                    for (var x = 0; x < row.length; x++) {
+                        let col = row[x];
+                        if (col === 0) {
+                            ctx.fillStyle = '#eee';
+                        } else {
+                            ctx.fillStyle = '#333';
+                        }
+                        ctx.fillRect(
+                            latticeSize * x + 1,
+                            y * latticeSize + 1,
+                            latticeSize - 2, latticeSize - 2,
+                        )
+                        // ----------------------------------------
+                        // ctx.fillStyle = 'red';
+                        // ctx.fillText(
+                        //     x + 1,
+                        //     x * latticeSize + 5,
+                        //     y * latticeSize + 15,
+                        // )
+                        // ----------------------------------------
+                    }
+                }
+            }
+            // 生成方块
+            generatorSquare() {
+                this.currentSquare = this.squareFactory.rund()
+                this.fastMoveDown(false)
+            }
+            // 消除所有已经满一行的方块
+            fullLine() {
+                for (let i = 0; i < this.matrix.length; i++) {
+                    if (this.matrix[i].indexOf(0) === -1) {
+                        this.matrix.splice(i, 1);
+                        let newLine = [];
+                        for (let c = 0; c < this.cols; c++) {
+                            newLine.push(0);
+                        }
+                        this.matrix.unshift(newLine);
+                    }
+                }
+            }
+            // 当前方块与矩阵合并
+            checkMerge() {
+                let { x, y, data } = this.currentSquare
+                let d = cloneMatrix(data)
+                let tempMatrix = cloneMatrix(this.matrix)
+                // 到底了
+                if (y + data.length === tempMatrix.length) {
+                    return true
+                }
+                // 方块碰撞
+                    // 相邻两行，相同的列， 都 === 1
+                for (let row = 0; row < data.length; row++) {
+                    let yAxis = y + row;
+                    for (let col = 0; col < tempMatrix[yAxis].length; col++) {
+                        if (data[row][col - x + 2] === 1 &&
+                        tempMatrix[yAxis + 1][col] === 1) {
+                            return true
+                        }
+                    }
+                }
+                return false
+            }
+            // 合并当前方块
+            merge() {
+                const { x, y, data } = this.currentSquare
+                let child = {
+                    row: y,
+                    col: x - 2,
+                    arr: data
+                }
+                this.matrix = mergeMatrix(child, this.matrix)
+                // 找到并消除一行
+                this.fullLine();
+            }
+            // 旋转方块
+            rotate(keyCode) {
+                if ([37,38,39,40].indexOf(keyCode) !== -1) {
+                    switch(keyCode) {
+                        // 左
+                        case 37:
+                            this.currentSquare.move(-1, this.matrix)
+                            break;
+                        // 上
+                        case 38:
+                            this.currentSquare.rotate(this.matrix)
+                            break;
+                        // 右
+                        case 39:
+                            this.currentSquare.move(1, this.matrix)
+                            break;
+                        case 40:
+                            console.log('取消 fast')
+                            this.fastMoveDown(false)
+                            break;
+                    }
+                    this.draw();
+                }
+            }
+            // 快速下降
+            fastMoveDown(action) {
+                this.fast = action
+                clearInterval(this.timer)
+                if (action) {
+                    this.timer = setInterval(() => this.runtime(), 10)
+                } else {
+                    this.timer = setInterval(() => this.runtime(), 500)
+                }
+            }
+            addEvent() {
+                document.addEventListener('keyup', (e) => {
+                    this.rotate(e.keyCode)
+                })
+                document.addEventListener('keydown', e => {
+                    if (this.fast === false && e.keyCode === 40) {
+                        this.fastMoveDown(true)
+                    }
+                })
+            }
+            main() {
+                const { cols, rows, ctx } = this;
+                this.generatorSquare()
+                // 绑定键盘事件
+                this.addEvent();
+                // 绘制所有方块
+                this.draw();
+                // 游戏主逻辑
+                this.runtime()
+                // 快速下降
+                this.fastMoveDown(false)
+            }
+            runtime() {
+                // 绘制所有格子
+                this.draw();
+                if (this.isGameOver() === false) {
+                    // 判断到底是否有满一行的
+                    if (this.checkMerge()) {
+                        // 合并
+                        this.merge();
+                        // 生成新的一行
+                        this.generatorSquare();
+                    } else {
+                        // 格子下落
+                        this.currentSquare.down();
+                    }
+                } else {
+                    console.log('game over')
+                    clearInterval(this.timer);
+                }
+            }
+            isGameOver() {
+                return this.matrix[0].indexOf(1) !== -1;
+            }
+        }
+        
+        ;(() => {
+            let t = new Tetris(ROWS, COLS);
+            t.main();
+        })();
+    </script>
+</html>
